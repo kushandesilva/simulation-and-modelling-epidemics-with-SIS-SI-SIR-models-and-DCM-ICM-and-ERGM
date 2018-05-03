@@ -1,0 +1,669 @@
+---
+title: "Dynamic models incl. ABM using EpiModel"
+author: "Kushan De Silva"
+date: "May 3, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Three classes of models can be constructed in EpiModel; Deterministic Compartmental Models, Stochastic Individual Contact Models, Stochastic Network Models (ERGM)
+
+Three infectious disease types can be run across all of the three classes above; Susceptible-Infectious (SI) (e.g. HIV), Susceptible-Infectious-Recovered (SIR), Susceptible-Infectious-Susceptible (SIS) (e.g. STI such as Ghonorrhea)
+
+```{r}
+library(EpiModel)
+## A One-group SIS model with varying act.rate
+param <- param.dcm(inf.prob = 0.2, act.rate = seq(0.05, 0.5, 0.05),
+rec.rate = 1/50)
+init <- init.dcm(s.num = 500, i.num = 1)
+control <- control.dcm(type = "SIS", nsteps = 500)
+mod1 <- dcm(param, init, control)
+head(as.data.frame(mod1, run = 1))
+head(as.data.frame(mod1, run = 10))
+
+##Two-group SIR model with vital dynamics
+param <- param.dcm(inf.prob = 0.2, inf.prob.g2 = 0.1,
+act.rate = 3, balance = "g1",
+rec.rate = 1/50, rec.rate.g2 = 1/50,
+b.rate = 1/100, b.rate.g2 = NA,
+ds.rate = 1/100, ds.rate.g2 = 1/100,
+di.rate = 1/90, di.rate.g2 = 1/90,
+dr.rate = 1/100, dr.rate.g2 = 1/100)
+init <- init.dcm(s.num = 500, i.num = 1, r.num = 0,
+s.num.g2 = 500, i.num.g2 = 1, r.num.g2 = 0)
+control <- control.dcm(type = "SIR", nsteps = 500)
+mod2 <- dcm(param, init, control)
+head(as.data.frame(mod2))
+tail(as.data.frame(mod2))
+
+## Stochastic ICM SIS model with 5 simulations
+param <- param.icm(inf.prob = 0.8, act.rate = 2, rec.rate = 0.1)
+init <- init.icm(s.num = 500, i.num = 1)
+control <- control.icm(type = "SIS", nsteps = 25,
+nsims = 2, verbose = FALSE)
+mod <- icm(param, init, control)
+# Default output is mean across simulations
+as.data.frame(mod)
+# Standard deviations of simulations
+as.data.frame(mod, out = "sd")
+# Quantile values for interquartile interval
+as.data.frame(mod, out = "qnt", qval = 0.25)
+as.data.frame(mod, out = "qnt", qval = 0.75)
+# Individual simulation runs, with default sim="all"
+as.data.frame(mod, out = "vals")
+as.data.frame(mod, out = "vals", sim = 2)
+## Stochastic SI network model
+nw <- network.initialize(n = 100, directed = FALSE)
+formation <- ~edges
+target.stats <- 50
+coef.diss <- dissolution_coefs(dissolution = ~offset(edges), duration = 20)
+est <- netest(nw, formation, target.stats, coef.diss, verbose = FALSE)
+param <- param.net(inf.prob = 0.5)
+init <- init.net(i.num = 10)
+control <- control.net(type = "SI", nsteps = 10, nsims = 2, verbose = FALSE)
+mod <- netsim(est, param, init, control)
+as.data.frame(mod)
+as.data.frame(mod, out = "vals")
+
+set.seed(10)
+nw <- network.initialize(n = 100, directed = FALSE)
+formation <- ~edges
+target.stats <- 50
+coef.diss <- dissolution_coefs(dissolution = ~offset(edges), duration = 20)
+est1 <- netest(nw, formation, target.stats, coef.diss, verbose = FALSE)
+param <- param.net(inf.prob = 0.5)
+init <- init.net(i.num = 1)
+control <- control.net(type = "SI", nsteps = 40, nsims = 1, verbose = FALSE,
+use.pids = FALSE)
+mod1 <- netsim(est1, param, init, control)
+tm <- get_transmat(mod1)
+tmPhylo <- as.phylo.transmat(tm)
+plot(tmPhylo, show.node.label = TRUE,
+root.edge = TRUE,
+cex = 0.5)
+
+# Calculate equilibrium for a DCM
+param <- param.dcm(inf.prob = 0.2, inf.prob.g2 = 0.1, act.rate = 0.5,
+balance = "g1", rec.rate = 1 / 50, rec.rate.g2 = 1 / 50,
+b.rate = 1 / 100, b.rate.g2 = NA, ds.rate = 1 / 100,
+ds.rate.g2 = 1 / 100, di.rate = 1 / 90,
+di.rate.g2 = 1 / 90)
+init <- init.dcm(s.num = 500, i.num = 1,
+s.num.g2 = 500, i.num.g2 = 1)
+control <- control.dcm(type = "SIS", nsteps = 500, verbose = FALSE)
+x <- dcm(param, init, control)
+plot(x)
+# Different calculation options
+calc_eql(x, nsteps = 100)
+calc_eql(x, nsteps = 250)
+calc_eql(x, nsteps = 100, numer = "i.num.g2", denom = "num.g2")
+calc_eql(x, nsteps = 100, numer = "i.num.g2", denom = "num.g2",
+threshold = 0.00001)
+
+# An imbalanced distribution
+check_bip_degdist(num.m1 = 500, num.m2 = 500,
+deg.dist.m2 = c(0.40, 0.55, 0.03, 0.02),
+deg.dist.m1 = c(0.48, 0.41, 0.08, 0.03))
+# A balanced distribution
+check_bip_degdist(num.m1 = 500, num.m2 = 500,
+deg.dist.m1 = c(0.40, 0.55, 0.04, 0.01),
+deg.dist.m2 = c(0.48, 0.41, 0.08, 0.03))
+
+##DCM SIR model with varying act.rate
+param <- param.dcm(inf.prob = 0.2, act.rate = 5:7,
+rec.rate = 1/3, b.rate = 1/90, ds.rate = 1/100,
+di.rate = 1/35, dr.rate = 1/100)
+init <- init.dcm(s.num = 1000, i.num = 1, r.num = 0)
+control <- control.dcm(type = "SIR", nsteps = 25, verbose = FALSE)
+mod1 <- dcm(param, init, control)
+comp_plot(mod1, at = 25, run = 3)
+##ICM SIR model with 3 simulations
+param <- param.icm(inf.prob = 0.2, act.rate = 3, rec.rate = 1/50,
+b.rate = 1/100, ds.rate = 1/100,
+di.rate = 1/90, dr.rate = 1/100)
+init <- init.icm(s.num = 500, i.num = 1, r.num = 0)
+control <- control.icm(type = "SIR", nsteps = 25,
+nsims = 3, verbose = FALSE)
+mod2 <- icm(param, init, control)
+comp_plot(mod2, at = 25, digits = 1)
+
+##SI Model (One-Group)
+# Set parameters
+param <- param.dcm(inf.prob = 0.2, act.rate = 0.25)
+init <- init.dcm(s.num = 500, i.num = 1)
+control <- control.dcm(type = "SI", nsteps = 500)
+mod1 <- dcm(param, init, control)
+mod1
+plot(mod1)
+##SIR Model with Vital Dynamics (One-Group)
+param <- param.dcm(inf.prob = 0.2, act.rate = 5,
+rec.rate = 1/3, b.rate = 1/90, ds.rate = 1/100,
+di.rate = 1/35, dr.rate = 1/100)
+init <- init.dcm(s.num = 500, i.num = 1, r.num = 0)
+control <- control.dcm(type = "SIR", nsteps = 500)
+mod2 <- dcm(param, init, control)
+mod2
+plot(mod2)
+##SIS Model with act.rate Sensitivity Parameter
+param <- param.dcm(inf.prob = 0.2, act.rate = seq(0.1, 0.5, 0.1),
+rec.rate = 1/50)
+init <- init.dcm(s.num = 500, i.num = 1)
+control <- control.dcm(type = "SIS", nsteps = 500)
+mod3 <- dcm(param, init, control)
+mod3
+plot(mod3)
+##SI Model with Vital Dynamics (Two-Group)
+param <- param.dcm(inf.prob = 0.4, inf.prob.g2 = 0.1,
+act.rate = 0.25, balance = "g1",
+b.rate = 1/100, b.rate.g2 = NA,
+ds.rate = 1/100, ds.rate.g2 = 1/100,
+di.rate = 1/50, di.rate.g2 = 1/50)
+init <- init.dcm(s.num = 500, i.num = 1,
+s.num.g2 = 500, i.num.g2 = 0)
+control <- control.dcm(type = "SI", nsteps = 500)
+mod4 <- dcm(param, init, control)
+mod4
+plot(mod4)
+
+
+# Homogeneous dissolution model with no deaths
+dissolution_coefs(dissolution = ~offset(edges), duration = 25)
+# Homogeneous dissolution model with deaths
+dissolution_coefs(dissolution = ~offset(edges), duration = 25,
+d.rate = 0.001)
+# Heterogeneous dissolution model in which same-race edges have
+# shorter duration compared to mixed-race edges, with no deaths
+dissolution_coefs(dissolution = ~offset(edges) + offset(nodematch("race")),
+duration = c(20, 10))
+# Heterogeneous dissolution model in which same-race edges have
+# shorter duration compared to mixed-race edges, with deaths
+dissolution_coefs(dissolution = ~offset(edges) + offset(nodematch("race")),
+duration = c(20, 10), d.rate = 0.001)
+
+# Initialize and parameterize network model
+nw <- network.initialize(n = 100, directed = FALSE)
+formation <- ~edges
+target.stats <- 50
+coef.diss <- dissolution_coefs(dissolution = ~offset(edges), duration = 20)
+# Model estimation
+est <- netest(nw, formation, target.stats, coef.diss, verbose = FALSE)
+# Simulate the network and extract a timed edgelist
+sim <- netdx(est, nsims = 1, nsteps = 100, verbose = FALSE)
+el <- sim$edgelist[[1]]
+# Calculate censoring
+edgelist_censor(el)
+
+## Deterministic compartmental models
+epiweb(class = "dcm")
+## Stochastic individual contact models
+epiweb(class = "icm")
+## Stochastic network models
+epiweb(class = "net")
+
+param <- param.icm(inf.prob = 0.2, act.rate = 0.25)
+init <- init.icm(s.num = 500, i.num = 1)
+control <- control.icm(type = "SI", nsteps = 250, nsims = 5)
+mod1 <- icm(param, init, control)
+df <- as.data.frame(mod1, out = "vals")
+df.mean <- as.data.frame(mod1)
+library(ggplot2)
+ggplot() +
+geom_line(data = df, mapping = aes(time, i.num, group = sim), alpha = 0.25,
+lwd = 0.25, color = "firebrick") +
+geom_bands(data = df, mapping = aes(time, i.num),
+lower = 0.1, upper = 0.9, fill = "firebrick") +
+geom_line(data = df.mean, mapping = aes(time, i.num)) +
+theme_minimal()
+
+nw <- network.initialize(500, directed = FALSE)
+set.seed(1)
+fit <- ergm(nw ~ edges, target.stats = 250)
+sim <- simulate(fit)
+# Slow ERGM-based method
+ergm.method <- unname(summary(sim ~ sociality(base = 0)))
+ergm.method
+# Fast tabulate method with network object
+deg.net <- get_degree(sim)
+deg.net
+# Even faster if network already transformed into an edgelist
+el <- as.edgelist(sim)
+deg.el <- get_degree(el)
+deg.el
+identical(ergm.method, deg.net, deg.el)
+
+## Simulate SI epidemic on bipartite Bernoulli random graph
+nw <- network.initialize(n = 100, bipartite = 50, directed = FALSE)
+formation <- ~edges
+target.stats <- 50
+coef.diss <- dissolution_coefs(dissolution = ~offset(edges), duration = 20)
+est <- netest(nw, formation, target.stats, coef.diss, verbose = FALSE)
+param <- param.net(inf.prob = 0.3, inf.prob.m2 = 0.15)
+init <- init.net(i.num = 10, i.num.m2 = 10)
+control <- control.net(type = "SI", nsteps = 10, nsims = 3, verbose = FALSE)
+mod <- netsim(est, param, init, control)
+## Extract the network from simulation 2
+get_network(mod, sim = 2)
+## Extract and collapse the network from simulation 1
+get_network(mod, collapse = TRUE, at = 5)
+
+
+## Simulate SI epidemic on bipartite Bernoulli random graph
+nw <- network.initialize(n = 100, bipartite = 50, directed = FALSE)
+formation <- ~edges
+target.stats <- 50
+coef.diss <- dissolution_coefs(dissolution = ~offset(edges), duration = 20)
+est <- netest(nw, formation, target.stats, coef.diss, verbose = FALSE)
+param <- param.net(inf.prob = 0.3, inf.prob.m2 = 0.15)
+init <- init.net(i.num = 10, i.num.m2 = 10)
+control <- control.net(type = "SI", nsteps = 10, nsims = 3,
+nwstats.formula = ~edges + meandeg + degree(0:5),
+verbose = FALSE)
+mod <- netsim(est, param, init, control)
+## Extract the network statistics from simulation 2
+get_nwstats(mod)
+get_nwstats(mod, sim = c(1,3))
+
+#SI Model
+param <- param.icm(inf.prob = 0.2, act.rate = 0.25)
+init <- init.icm(s.num = 500, i.num = 1)
+control <- control.icm(type = "SI", nsteps = 500, nsims = 10)
+mod1 <- icm(param, init, control)
+mod1
+plot(mod1)
+
+#SIR Model
+param <- param.icm(inf.prob = 0.2, act.rate = 0.25, rec.rate = 1/50)
+init <- init.icm(s.num = 500, i.num = 1, r.num = 0)
+control <- control.icm(type = "SIR", nsteps = 500, nsims = 10)
+mod2 <- icm(param, init, control)
+mod2
+plot(mod2)
+#SIS Model
+param <- param.icm(inf.prob = 0.2, act.rate = 0.25, rec.rate = 1/50)
+init <- init.icm(s.num = 500, i.num = 1)
+control <- control.icm(type = "SIS", nsteps = 500, nsims = 10)
+mod3 <- icm(param, init, control)
+mod3
+plot(mod3)
+#SI Model with Vital Dynamics (Two-Group)
+param <- param.icm(inf.prob = 0.4, inf.prob.g2 = 0.1,
+act.rate = 0.25, balance = "g1",
+b.rate = 1/100, b.rate.g2 = NA,
+ds.rate = 1/100, ds.rate.g2 = 1/100,
+di.rate = 1/50, di.rate.g2 = 1/50)
+init <- init.icm(s.num = 500, i.num = 1,
+s.num.g2 = 500, i.num.g2 = 0)
+control <- control.icm(type = "SI", nsteps = 500, nsims = 10)
+mod4 <- icm(param, init, control)
+mod4
+plot(mod4)
+
+#using status.vector and infTime.vector together
+n <- 100
+status <- sample(c("s", "i"), size = n, replace = TRUE, prob = c(0.8, 0.2))
+infTime <- rep(NA, n)
+infTime[which(status == "i")] <- -rgeom(sum(status == "i"), prob = 0.01) + 2
+init.net(status.vector = status, infTime.vector = infTime)
+
+## Simulate SI epidemic on bipartite Bernoulli random graph
+nw <- network.initialize(n = 100, bipartite = 50, directed = FALSE)
+formation <- ~edges
+target.stats <- 50
+coef.diss <- dissolution_coefs(dissolution = ~offset(edges), duration = 20)
+est <- netest(nw, formation, target.stats, coef.diss, verbose = FALSE)
+param <- param.net(inf.prob = 0.3, inf.prob.m2 = 0.15)
+init <- init.net(i.num = 10, i.num.m2 = 10)
+control <- control.net(type = "SI", nsteps = 10, nsims = 3, verbose = FALSE)
+mod <- netsim(est, param, init, control)
+## Extract the transmission matrix from simulation 2
+get_transmat(mod, sim = 2)
+
+param <- param.icm(inf.prob = 0.2, act.rate = 0.8)
+init <- init.icm(s.num = 1000, i.num = 100)
+control <- control.icm(type = "SI", nsteps = 10,
+nsims = 3, verbose = FALSE)
+x <- icm(param, init, control)
+control <- control.icm(type = "SI", nsteps = 10,
+nsims = 1, verbose = FALSE)
+y <- icm(param, init, control)
+z <- merge(x, y)
+x$epi
+y$epi
+z$epi
+
+# Network model
+nw <- network.initialize(n = 100, directed = FALSE)
+coef.diss <- dissolution_coefs(dissolution = ~offset(edges), duration = 10)
+est <- netest(nw, formation = ~edges, target.stats = 25,
+coef.diss = coef.diss, verbose = FALSE)
+# Epidemic models
+param <- param.net(inf.prob = 1)
+init <- init.net(i.num = 1)
+control <- control.net(type = "SI", nsteps = 20, nsims = 2,
+save.nwstats = TRUE,
+nwstats.formula = ~edges + degree(0),
+verbose = FALSE)
+x <- netsim(est, param, init, control)
+y <- netsim(est, param, init, control)
+# Merging
+z <- merge(x, y)
+x$epi
+y$epi
+z$epi
+
+# DCM example
+param <- param.dcm(inf.prob = 0.2, act.rate = 0.25)
+init <- init.dcm(s.num = 500, i.num = 1)
+control <- control.dcm(type = "SI", nsteps = 500)
+mod1 <- dcm(param, init, control)
+mod1 <- mutate_epi(mod1, prev = i.num/num)
+plot(mod1, y = "prev")
+# Network model example
+nw <- network.initialize(n = 100, bipartite = 50, directed = FALSE)
+formation <- ~edges
+target.stats <- 50
+coef.diss <- dissolution_coefs(dissolution = ~offset(edges), duration = 20)
+est1 <- netest(nw, formation, target.stats, coef.diss, verbose = FALSE)
+# Epidemic model
+param <- param.net(inf.prob = 0.3, inf.prob.m2 = 0.15)
+init <- init.net(i.num = 1, i.num.m2 = 0)
+control <- control.net(type = "SI", nsteps = 10, nsims = 3,
+verbose = FALSE)
+mod1 <- netsim(est1, param, init, control)
+mod1
+# Add the prevalences to the dataset
+mod1 <- mutate_epi(mod1, i.prev = i.num / num,
+i.prev.m2 = i.num.m2 / num.m2)
+plot(mod1, y = c("i.prev", "i.prev.m2"), qnts = 0.5, legend = TRUE)
+# Add incidence rate per 100 person years (assume time step = 1 week)
+mod1 <- mutate_epi(mod1, ir100 = 5200*(si.flow + si.flow.m2) /(s.num + s.num.m2))
+df <- as.data.frame(mod1)
+
+# Network initialization and model parameterization
+nw <- network.initialize(100, directed = FALSE)
+formation <- ~edges
+target.stats <- 50
+coef.diss <- dissolution_coefs(dissolution = ~offset(edges), duration = 25)
+# Estimate the model
+est <- netest(nw, formation, target.stats, coef.diss, verbose = FALSE)
+# Static diagnostics on the ERGM fit
+dx1 <- netdx(est, nsims = 1e4, dynamic = FALSE,
+nwstats.formula = ~edges + meandeg + concurrent)
+dx1
+plot(dx1, method = "b", stats = c("edges", "concurrent"))
+# Dynamic diagnostics on the STERGM approximation
+dx2 <- netdx(est, nsims = 5, nsteps = 500,
+nwstats.formula = ~edges + meandeg + concurrent,
+set.control.ergm = control.simulate.ergm(MCMC.burnin = 1e6))
+dx2
+plot(dx2, stats = c("edges", "meandeg"), plots.joined = FALSE)
+plot(dx2, type = "duration")
+plot(dx2, type = "dissolution", qnts.col = "orange2")
+plot(dx2, type = "dissolution", method = "b", col = "bisque")
+
+# Initialize a network of 100 nodes
+nw <- network.initialize(n = 100, directed = FALSE)
+# Set formation formula
+formation <- ~edges + concurrent
+# Set target statistics for formation
+target.stats <- c(50, 25)
+# Obtain the offset coefficients
+coef.diss <- dissolution_coefs(dissolution = ~offset(edges), duration = 10)
+# Estimate the STERGM using the edges dissolution approximation
+est <- netest(nw, formation, target.stats, coef.diss,
+set.control.ergm = control.ergm(MCMC.burnin = 1e5,
+MCMC.interval = 1000))
+est
+# To estimate the STERGM directly, use edapprox = FALSE
+est2 <- netest(nw, formation, target.stats, coef.diss, edapprox = FALSE)
+est2
+
+
+##Independent SI Model
+# Network model estimation
+nw <- network.initialize(n = 100, bipartite = 50, directed = FALSE)
+formation <- ~edges
+target.stats <- 50
+coef.diss <- dissolution_coefs(dissolution = ~offset(edges), duration = 20)
+est1 <- netest(nw, formation, target.stats, coef.diss, verbose = FALSE)
+# Epidemic model
+param <- param.net(inf.prob = 0.3, inf.prob.m2 = 0.15)
+init <- init.net(i.num = 10, i.num.m2 = 10)
+control <- control.net(type = "SI", nsteps = 100, nsims = 5, verbose.int = 0)
+mod1 <- netsim(est1, param, init, control)
+# Print, plot, and summarize the results
+mod1
+plot(mod1)
+summary(mod1, at = 50)
+##Dependent SIR Model
+# Recalculate dissolution coefficient with death rate
+coef.diss <- dissolution_coefs(dissolution = ~offset(edges), duration = 20,
+d.rate = 0.0021)
+# Reestimate the model with new coefficient
+est2 <- netest(nw, formation, target.stats, coef.diss, verbose = FALSE)
+# Reset parameters to include demographic rates
+param <- param.net(inf.prob = 0.3, inf.prob.m2 = 0.15,
+rec.rate = 0.02, rec.rate.m2 = 0.02,
+b.rate = 0.002, b.rate.m2 = NA,
+ds.rate = 0.001, ds.rate.m2 = 0.001,
+di.rate = 0.001, di.rate.m2 = 0.001,
+dr.rate = 0.001, dr.rate.m2 = 0.001)
+init <- init.net(i.num = 10, i.num.m2 = 10,
+r.num = 0, r.num.m2 = 0)
+control <- control.net(type = "SIR", nsteps = 100, nsims = 5)
+# Simulate the model with new network fit
+mod2 <- netsim(est2, param, init, control)
+# Print, plot, and summarize the results
+mod2
+plot(mod2)
+summary(mod2, at = 100)
+
+# Deterministic SIR model with varying act rate
+param <- param.dcm(inf.prob = 0.2, act.rate = 1:10,
+rec.rate = 1/3, b.rate = 0.011, ds.rate = 0.01,
+di.rate = 0.03, dr.rate = 0.01)
+init <- init.dcm(s.num = 1000, i.num = 1, r.num = 0)
+control <- control.dcm(type = "SIR", nsteps = 100, dt = 0.25)
+mod <- dcm(param, init, control)
+# Plot disease prevalence by default
+plot(mod)
+# Plot prevalence of susceptibles
+plot(mod, y = "s.num", popfrac = TRUE, col = "Greys")
+# Plot number of susceptibles
+plot(mod, y = "s.num", popfrac = FALSE, col = "Greys", grid = TRUE)
+# Plot multiple runs of multiple compartments together
+plot(mod, y = c("s.num", "i.num"),run = 5, xlim = c(0, 50), grid = TRUE)
+plot(mod, y = c("s.num", "i.num"),
+run = 10, lty = 2, legend = "n", add = TRUE)
+
+## Plotting multiple compartment values from SIR model
+param <- param.icm(inf.prob = 0.5, act.rate = 0.5, rec.rate = 0.02)
+init <- init.icm(s.num = 500, i.num = 1, r.num = 0)
+control <- control.icm(type = "SIR", nsteps = 100,
+nsims = 3, verbose = FALSE)
+mod <- icm(param, init, control)
+plot(mod, grid = TRUE)
+## Plot only infected with specific output from SI model
+param <- param.icm(inf.prob = 0.25, act.rate = 0.25)
+init <- init.icm(s.num = 500, i.num = 10)
+control <- control.icm(type = "SI", nsteps = 100,
+nsims = 3, verbose = FALSE)
+mod2 <- icm(param, init, control)
+# Plot prevalence
+plot(mod2, y = "i.num", mean.line = FALSE, sim.lines = TRUE)
+# Plot incidence
+par(mfrow = c(1, 2))
+plot(mod2, y = "si.flow", mean.smooth = TRUE, grid = TRUE)
+plot(mod2, y = "si.flow", qnts.smooth = FALSE, qnts = 1)
+
+
+# Network initialization and model parameterization
+nw <- network.initialize(100, directed = FALSE)
+nw <- set.vertex.attribute(nw, "sex", rbinom(100, 1, 0.5))
+formation <- ~edges + nodematch("sex")
+target.stats <- c(50, 40)
+coef.diss <- dissolution_coefs(dissolution = ~offset(edges), duration = 50)
+# Estimate the model
+est <- netest(nw, formation, target.stats, coef.diss, verbose = FALSE)
+# Static diagnostics
+dx1 <- netdx(est, nsims = 1e4, dynamic = FALSE,
+nwstats.formula = ~edges + meandeg + concurrent +
+nodefactor("sex", base = 0) +
+nodematch("sex"))
+dx1
+# Only formation diagnostics are available to plot
+plot(dx1, stats = "edges")
+plot(dx1, stats = c("edges", "concurrent"))
+plot(dx1, stats = "edges", method = "b", col = "seagreen3", grid = TRUE)
+plot(dx1, stats = c("nodefactor.sex.0", "nodefactor.sex.1"),
+method = "b", col = transco(2:3, 0.5))
+# Dynamic diagnostics
+dx2 <- netdx(est, nsims = 10, nsteps = 500,
+nwstats.formula = ~edges + meandeg + concurrent +
+nodefactor("sex", base = 0) +
+nodematch("sex"))
+dx2
+# Formation statistics plots, joined and separate
+plot(dx2, grid = TRUE)
+plot(dx2, type = "formation", plots.joined = TRUE)
+plot(dx2, type = "formation", sims = 1, plots.joined = TRUE,
+qnts = FALSE, sim.lines = TRUE, mean.line = FALSE)
+plot(dx2, type = "formation", plots.joined = FALSE,
+stats = c("edges", "concurrent"), grid = TRUE)
+plot(dx2, type = "formation", stats = "nodefactor.sex.0",
+sims = 1, sim.lwd = 5, sim.col = "darkmagenta")
+plot(dx2, method = "b", col = "bisque", grid = TRUE)
+plot(dx2, method = "b", stats = "meandeg", col = "dodgerblue")
+# Duration statistics plot
+plot(dx2, type = "duration", mean.col = "black", grid = TRUE)
+plot(dx2, type = "duration", sims = 10, mean.line = FALSE, sim.line = TRUE,
+sim.col = "steelblue", sim.lwd = 3, targ.lty = 1, targ.lwd = 0.5)
+# Dissolution statistics plot
+plot(dx2, type = "dissolution", mean.col = "black", grid = TRUE)
+plot(dx2, type = "dissolution", method = "b", col = "pink1")
+
+
+
+## Independent SI Model
+# Initialize network and set network model parameters
+nw <- network.initialize(n = 100, bipartite = 50, directed = FALSE)
+formation <- ~edges
+target.stats <- 50
+coef.diss <- dissolution_coefs(dissolution = ~offset(edges), duration = 20)
+# Estimate the network model
+est <- netest(nw, formation, target.stats, coef.diss, verbose = FALSE)
+# Simulate the epidemic model
+param <- param.net(inf.prob = 0.3, inf.prob.m2 = 0.15)
+init <- init.net(i.num = 10, i.num.m2 = 10)
+control <- control.net(type = "SI", nsteps = 20, nsims = 3,
+verbose = FALSE, save.nwstats = TRUE,
+nwstats.formula = ~edges + meandeg + concurrent)
+mod <- netsim(est, param, init, control)
+# Plot epidemic trajectory
+plot(mod)
+plot(mod, type = "epi")
+plot(mod, type = "epi", grid = TRUE)
+plot(mod, type = "epi", popfrac = TRUE)
+plot(mod, type = "epi", y = "si.flow", qnts = 1, ylim = c(0, 4))
+# Plot static networks
+par(mar = c(0,0,0,0))
+plot(mod, type = "network")
+# Automatic coloring of infected nodes as red
+par(mfrow = c(1, 2), mar = c(0, 0, 2, 0))
+plot(mod, type = "network", main = "Min Prev | Time 50",
+col.status = TRUE, at = 20, sims = "min")
+plot(mod, type = "network", main = "Max Prev | Time 50",
+col.status = TRUE, at = 20, sims = "max")
+# Automatic shape by mode number (circle = mode 1)
+par(mar = c(0,0,0,0))
+plot(mod, type = "network", at = 20, col.status = TRUE, shp.bip = "square")
+plot(mod, type = "network", at = 20, col.status = TRUE, shp.bip = "triangle")
+# Plot formation statistics
+par(mfrow = c(1,1), mar = c(3,3,1,1), mgp = c(2,1,0))
+plot(mod, type = "formation", grid = TRUE)
+plot(mod, type = "formation", plots.joined = FALSE)
+plot(mod, type = "formation", sims = 2:3)
+plot(mod, type = "formation", plots.joined = FALSE,
+stats = c("edges", "concurrent"))
+plot(mod, type = "formation", stats = "meandeg",
+sim.lwd = 2, sim.col = "seagreen")
+
+## Deterministic SIR model with varying act.rate
+param <- param.dcm(inf.prob = 0.2, act.rate = 2:4, rec.rate = 1/3,
+b.rate = 0.011, ds.rate = 0.01,
+di.rate = 0.03, dr.rate = 0.01)
+init <- init.dcm(s.num = 1000, i.num = 1, r.num = 0)
+control <- control.dcm(type = "SIR", nsteps = 50)
+mod <- dcm(param, init, control)
+summary(mod, at = 25, run = 1)
+summary(mod, at = 25, run = 3)
+summary(mod, at = 26, run = 3)
+
+
+## Stochastic ICM SI model with 3 simulations
+param <- param.icm(inf.prob = 0.2, act.rate = 1)
+init <- init.icm(s.num = 500, i.num = 1)
+control <- control.icm(type = "SI", nsteps = 50,
+nsims = 5, verbose = FALSE)
+mod <- icm(param, init, control)
+summary(mod, at = 25)
+summary(mod, at = 50)
+
+## Independent SI Model
+# Initialize network and set network model parameters
+nw <- network.initialize(n = 100, bipartite = 50, directed = FALSE)
+formation <- ~edges
+target.stats <- 50
+coef.diss <- dissolution_coefs(dissolution = ~offset(edges), duration = 20)
+# Estimate the ERGM models (see help for netest)
+# Skipping model diagnostics for this, but one should always run these
+est1 <- netest(nw, formation, target.stats, coef.diss, verbose = FALSE)
+# Parameters, initial conditions, and controls for model
+param <- param.net(inf.prob = 0.3, inf.prob.m2 = 0.15)
+init <- init.net(i.num = 10, i.num.m2 = 10)
+control <- control.net(type = "SI", nsteps = 100, nsims = 5, verbose.int = 0)
+# Run the model simulation
+mod <- netsim(est1, param, init, control)
+summary(mod, at = 1)
+summary(mod, at = 50)
+summary(mod, at = 100)
+
+
+set.seed(12345)
+param <- param.icm(inf.prob = 0.2, act.rate = 0.25)
+init <- init.icm(s.num = 500, i.num = 1)
+control <- control.icm(type = "SI", nsteps = 200, nsims = 1)
+mod1 <- icm(param, init, control)
+df <- as.data.frame(mod1, out = "vals")
+print(df)
+plot(mod1)
+mod1$control$nsteps
+mod2 <- truncate_sim(mod1, at = 150)
+df2 <- as.data.frame(mod2)
+print(df2)
+plot(mod2)
+mod2$control$nsteps
+
+
+nw <- network.initialize(1000, directed = FALSE)
+# Two dissolutions: an average duration of 300 versus 200
+diss.300 <- dissolution_coefs(~offset(edges), 300, 0.001)
+diss.200 <- dissolution_coefs(~offset(edges), 200, 0.001)
+# Fit the two reference models
+est300 <- netest(nw = nw,
+formation = ~edges,
+target.stats = c(500),
+coef.diss = diss.300)
+est200 <- netest(nw = nw,
+formation = ~edges,
+target.stats = c(500),
+coef.diss = diss.200)
+# Alternatively, update the 300 model with the 200 coefficients
+est200.compare <- update_dissolution(est300, diss.200)
+identical(est200$coef.form, est200.compare$coef.form)
+
+```
+
